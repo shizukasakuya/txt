@@ -129,7 +129,7 @@
         </div>
         <div class="speed-control">
             Speed: 
-            <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1">
+            <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1.5">
             <span id="speedValue">1.0x</span>
         </div>
         <div class="controls">
@@ -149,9 +149,27 @@
         let currentSentenceIndex = 0;
         let scrollPosition = 0;
         let highlightInterval = null;
+        let isPaused = false;
+
+        // Load saved speed preference
+        const savedSpeed = localStorage.getItem('preferredSpeed');
+        if (savedSpeed) {
+            speedSlider.value = savedSpeed;
+            speedValue.textContent = savedSpeed + 'x';
+        }
 
         speedSlider.oninput = function() {
-            speedValue.textContent = this.value + 'x';
+            const newSpeed = this.value;
+            speedValue.textContent = newSpeed + 'x';
+            localStorage.setItem('preferredSpeed', newSpeed);
+            
+            if (currentUtterance) {
+                currentUtterance.rate = newSpeed;
+                if (!isPaused) {
+                    window.speechSynthesis.cancel();
+                    window.speechSynthesis.speak(currentUtterance);
+                }
+            }
         }
 
         function splitIntoSentences(text) {
@@ -179,6 +197,7 @@
             
             textInput.style.display = 'none';
             readingArea.style.display = 'block';
+            readingArea.style.userSelect = 'none'; // Prevent text selection
             readingArea.scrollTop = scrollPosition;
             return true;
         }
@@ -237,11 +256,16 @@
             const text = textInput.value;
             const speed = speedSlider.value;
             window.speechSynthesis.cancel();
+            isPaused = false;
             
             currentUtterance = new SpeechSynthesisUtterance(text);
             currentUtterance.rate = speed;
 
-            currentUtterance.onend = resetView;
+            currentUtterance.onend = () => {
+                if (!isPaused) {
+                    resetView();
+                }
+            };
 
             // Start highlighting sentences
             highlightNextSentence();
@@ -252,6 +276,10 @@
 
         function pause() {
             window.speechSynthesis.pause();
+            isPaused = true;
+            if (highlightInterval) {
+                clearTimeout(highlightInterval);
+            }
         }
 
         function stop() {
