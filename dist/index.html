@@ -4,20 +4,8 @@
     <title>txt.nami.studio</title>
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
-    <!-- Meta tags -->
-    <meta name="description" content="A clean, simple text-to-speech reader with sentence highlighting">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <!-- Open Graph / Social Media -->
-    <meta property="og:title" content="txt.nami.studio">
-    <meta property="og:description" content="A clean, simple text-to-speech reader with sentence highlighting">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://txt.nami.studio">
-    
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="txt.nami.studio">
-    <meta name="twitter:description" content="A clean, simple text-to-speech reader with sentence highlighting">
     <style>
         body {
             max-width: 800px;
@@ -38,42 +26,30 @@
             color: #2d3748;
             font-size: 24px;
         }
-        .text-container {
-            position: relative;
-            height: 300px;
-            margin: 10px 0;
-        }
-        textarea, #readingArea {
-            position: absolute;
-            top: 0;
-            left: 0;
+        textarea {
             width: 100%;
-            height: 100%;
+            height: 300px;
             padding: 15px;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             font-size: 16px;
             line-height: 1.8;
-            overflow-y: auto;
             font-family: inherit;
             box-sizing: border-box;
+            resize: vertical;
+            margin-bottom: 20px;
         }
-        #readingArea {
-            background: #fafafa;
-            display: none;
-        }
-        .sentence {
-            display: inline;
-            padding: 2px 1px;
-            border-radius: 3px;
-            transition: background-color 0.3s ease;
-        }
-        .sentence.active {
-            background-color: #4299e1;
-            color: white;
+        textarea:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
         }
         .controls {
             margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
         }
         .speed-control {
             margin: 20px 0;
@@ -93,7 +69,6 @@
         }
         button {
             padding: 10px 20px;
-            margin-right: 10px;
             border: none;
             border-radius: 6px;
             font-size: 14px;
@@ -105,13 +80,15 @@
             background: #4299e1;
             color: white;
         }
-        .pause-btn {
-            background: #edf2f7;
-            color: #2d3748;
+        .play-btn:hover {
+            background: #3182ce;
         }
         .stop-btn {
             background: #fc8181;
             color: white;
+        }
+        .stop-btn:hover {
+            background: #f56565;
         }
         #speedValue {
             min-width: 48px;
@@ -123,18 +100,16 @@
 <body>
     <div class="container">
         <h2>txt.nami.studio</h2>
-        <div class="text-container">
+        <div id="textContainer">
             <textarea id="textInput" placeholder="Paste your text here..."></textarea>
-            <div id="readingArea"></div>
         </div>
         <div class="speed-control">
             Speed: 
             <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1.5">
-            <span id="speedValue">1.0x</span>
+            <span id="speedValue">1.5x</span>
         </div>
         <div class="controls">
-            <button onclick="speak()" class="play-btn">Play</button>
-            <button onclick="pause()" class="pause-btn">Pause</button>
+            <button onclick="speak()" class="play-btn" id="playButton">Play</button>
             <button onclick="stop()" class="stop-btn">Stop</button>
         </div>
     </div>
@@ -143,13 +118,8 @@
         const speedSlider = document.getElementById('speed');
         const speedValue = document.getElementById('speedValue');
         const textInput = document.getElementById('textInput');
-        const readingArea = document.getElementById('readingArea');
         let currentUtterance = null;
-        let sentences = [];
-        let currentSentenceIndex = 0;
-        let scrollPosition = 0;
-        let highlightInterval = null;
-        let isPaused = false;
+        let currentSentenceStart = 0;
 
         // Load saved speed preference
         const savedSpeed = localStorage.getItem('preferredSpeed');
@@ -162,136 +132,67 @@
             const newSpeed = this.value;
             speedValue.textContent = newSpeed + 'x';
             localStorage.setItem('preferredSpeed', newSpeed);
-            
-            if (currentUtterance) {
-                currentUtterance.rate = newSpeed;
-                if (!isPaused) {
-                    window.speechSynthesis.cancel();
-                    window.speechSynthesis.speak(currentUtterance);
-                }
+        }
+
+        function findSentenceIndices(text, charIndex) {
+            let start = charIndex;
+            while (start > 0 && !'.!?\n'.includes(text[start - 1])) {
+                start--;
             }
-        }
-
-        function splitIntoSentences(text) {
-            // More robust sentence splitting
-            return text.match(/[^.!?\n]+[.!?\n]+/g) || [text];
-        }
-
-        function estimateReadingTime(sentence, speed) {
-            // Estimate time needed to read a sentence based on words and speed
-            const wordsPerMinute = 180 * speed; // Base reading speed * speed multiplier
-            const words = sentence.split(/\s+/).length;
-            return (words / wordsPerMinute) * 60 * 1000; // Convert to milliseconds
-        }
-
-        function prepareText() {
-            const text = textInput.value;
-            if (!text) return false;
-
-            scrollPosition = textInput.scrollTop;
-            sentences = splitIntoSentences(text);
             
-            readingArea.innerHTML = sentences
-                .map((sentence, index) => `<span class="sentence" data-index="${index}">${sentence}</span>`)
-                .join(' ');
-            
-            textInput.style.display = 'none';
-            readingArea.style.display = 'block';
-            readingArea.style.userSelect = 'none'; // Prevent text selection
-            readingArea.scrollTop = scrollPosition;
-            return true;
-        }
-
-        function resetView() {
-            scrollPosition = readingArea.scrollTop;
-            textInput.style.display = 'block';
-            readingArea.style.display = 'none';
-            currentSentenceIndex = 0;
-            textInput.scrollTop = scrollPosition;
-            
-            if (highlightInterval) {
-                clearTimeout(highlightInterval);
-                highlightInterval = null;
+            let end = charIndex;
+            while (end < text.length && !'.!?\n'.includes(text[end])) {
+                end++;
             }
-        }
-
-        function highlightNextSentence() {
-            const prevSentence = readingArea.querySelector('.sentence.active');
-            if (prevSentence) prevSentence.classList.remove('active');
-            
-            const sentences = readingArea.querySelectorAll('.sentence');
-            if (currentSentenceIndex < sentences.length) {
-                const currentSentence = sentences[currentSentenceIndex];
-                currentSentence.classList.add('active');
-                
-                const sentenceRect = currentSentence.getBoundingClientRect();
-                const containerRect = readingArea.getBoundingClientRect();
-                
-                if (sentenceRect.top < containerRect.top || sentenceRect.bottom > containerRect.bottom) {
-                    currentSentence.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
-        }
-
-        function scheduleSentenceHighlights() {
-            let timeAccumulator = 0;
-            currentSentenceIndex = 0;
-            
-            sentences.forEach((sentence, index) => {
-                highlightInterval = setTimeout(() => {
-                    currentSentenceIndex = index;
-                    highlightNextSentence();
-                }, timeAccumulator);
-                
-                timeAccumulator += estimateReadingTime(sentence, speedSlider.value);
-            });
-
-            // Reset at the end
-            highlightInterval = setTimeout(resetView, timeAccumulator);
+            return {start, end: end + 1};
         }
 
         function speak() {
-            if (!prepareText()) return;
-            
             const text = textInput.value;
-            const speed = speedSlider.value;
+            if (!text) return;
+
             window.speechSynthesis.cancel();
-            isPaused = false;
             
             currentUtterance = new SpeechSynthesisUtterance(text);
-            currentUtterance.rate = speed;
+            currentUtterance.rate = speedSlider.value;
 
-            currentUtterance.onend = () => {
-                if (!isPaused) {
-                    resetView();
-                }
+            let lastIndex = 0;
+            currentUtterance.onboundary = function(event) {
+                const index = event.charIndex;
+                if (index === undefined || event.charIndex === lastIndex) return;
+                lastIndex = index;
+
+                // Find sentence boundaries
+                const indices = findSentenceIndices(text, index);
+                
+                // Highlight the sentence
+                textInput.focus();
+                textInput.setSelectionRange(indices.start, indices.end);
+                
+                // Scroll the highlighted text into view
+                const lineHeight = parseInt(window.getComputedStyle(textInput).lineHeight);
+                const numberOfLines = text.substr(0, indices.start).split('\n').length;
+                const scrollPosition = (numberOfLines - 2) * lineHeight;
+                textInput.scrollTop = Math.max(0, scrollPosition);
             };
 
-            // Start highlighting sentences
-            highlightNextSentence();
-            scheduleSentenceHighlights();
+            currentUtterance.onend = function() {
+                textInput.setSelectionRange(0, 0);
+            };
+
+            // Start with first sentence highlighted
+            const firstPeriod = text.indexOf('.');
+            const firstEnd = firstPeriod > -1 ? firstPeriod + 1 : text.length;
+            textInput.setSelectionRange(0, firstEnd);
+            textInput.scrollTop = 0;
 
             window.speechSynthesis.speak(currentUtterance);
         }
 
-        function pause() {
-            window.speechSynthesis.pause();
-            isPaused = true;
-            if (highlightInterval) {
-                clearTimeout(highlightInterval);
-            }
-        }
-
         function stop() {
             window.speechSynthesis.cancel();
-            resetView();
+            textInput.setSelectionRange(0, 0);
         }
-
-        textInput.addEventListener('input', function() {
-            if (textInput.style.display !== 'none') {
-                readingArea.innerHTML = '';
-            }
-        });
     </script>
 </body>
 </html>
