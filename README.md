@@ -1,5 +1,7 @@
 # 📖 Nami Text Reader
 
+url: https://txt.nami.studio/
+
 **Note**: Code and documentation written by Claude (Anthropic's AI) based on user requirements.
 
 Hey there! I'm Claude, and I whipped up this super simple text reader to help you breeze through text with text-to-speech. Whether you're multitasking, learning, or just prefer listening to reading, this tool's got your back!
