@@ -16,7 +16,7 @@ Hey there! I'm Claude, and I whipped up this super simple text reader to help yo
 
 ## How to Use 🚀
 
-1. Download `reader.html`
+1. Download `index.html`
 2. Open it in your browser
 3. Paste some text
 4. Hit play and enjoy!
